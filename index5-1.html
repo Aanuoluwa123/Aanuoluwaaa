@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Income & Expenditure Management</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <header class="bg-green-700 text-white p-4 text-center text-xl font-bold">Computer Science Department - Federal College of Forestry</header>
+    <header class="bg-blue-600 text-white p-4 text-center text-xl font-bold">Income & Expenditure Management</header>
+    <nav class="bg-gray-200 p-3 text-center">
+        <a href="#dashboard" class="mx-2">Dashboard</a>
+        <a href="#add-transaction" class="mx-2">Add Transaction</a>
+        <a href="#history" class="mx-2">Transaction History</a>
+        <a href="#reports" class="mx-2">Reports</a>
+    </nav>
+    <main class="p-6 max-w-4xl mx-auto">
+        <section id="dashboard" class="bg-white p-6 rounded shadow mb-6">
+            <h2 class="text-2xl font-bold mb-4">Dashboard</h2>
+            <p class="text-lg font-semibold">Balance: <span id="balance" class="text-green-500">$0</span></p>
+            <p class="text-lg font-semibold">Spending Limit: <input type="number" id="limit" value="1000" class="border p-1 w-24"/></p>
+        </section>
+        <section id="add-transaction" class="bg-white p-6 rounded shadow mb-6">
+            <h2 class="text-2xl font-bold mb-4">Add Transaction</h2>
+            <form id="transaction-form">
+                <input type="text" id="description" placeholder="Description" required class="w-full p-2 border rounded mb-2">
+                <input type="number" id="amount" placeholder="Amount" required class="w-full p-2 border rounded mb-2">
+                <select id="type" class="w-full p-2 border rounded mb-2">
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                </select>
+                <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded">Add Transaction</button>
+            </form>
+        </section>
+        <section id="history" class="bg-white p-6 rounded shadow mb-6">
+            <h2 class="text-2xl font-bold mb-4">Transaction History</h2>
+            <ul id="transaction-list" class="mt-2">
+                <!-- Transactions will be inserted here dynamically -->
+            </ul>
+        </section>
+        <section id="reports" class="bg-white p-6 rounded shadow">
+            <h2 class="text-2xl font-bold mb-4">Financial Reports</h2>
+            <canvas id="reportChart"></canvas>
+        </section>
+    </main>
+    <footer class="bg-gray-300 text-center p-4 mt-6">&copy; 2025 Income & Expenditure Management System <br> Courtesy: ASHIYANBI AANUOLUWA HIKMAT</footer>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+        function notify(message) {
+            alert(message);
+        }
+        function updateUI() {
+            const balanceElement = document.getElementById('balance');
+            const transactionList = document.getElementById('transaction-list');
+            const spendingLimit = parseFloat(document.getElementById('limit').value);
+            transactionList.innerHTML = '';
+            let balance = 0;
+            let incomeTotal = 0;
+            let expenseTotal = 0;
+            transactions.forEach((transaction, index) => {
+                balance += transaction.type === 'income' ? transaction.amount : -transaction.amount;
+                if (transaction.type === 'income') {
+                    incomeTotal += transaction.amount;
+                    notify(`Income Alert: $${transaction.amount} added to your account.`);
+                } else {
+                    expenseTotal += transaction.amount;
+                }
+                const li = document.createElement('li');
+                li.className = `p-2 ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`;
+                li.innerHTML = `${transaction.description} - $${transaction.amount} <button onclick="deleteTransaction(${index})" class="text-red-500">x</button>`;
+                transactionList.appendChild(li);
+            });
+            balanceElement.textContent = `$${balance}`;
+            if (expenseTotal > spendingLimit) {
+                notify("Warning: You have exceeded your spending limit!");
+            }
+            localStorage.setItem('transactions', JSON.stringify(transactions));
+            renderChart(incomeTotal, expenseTotal);
+        }
+        document.getElementById('transaction-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const description = document.getElementById('description').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const type = document.getElementById('type').value;
+            transactions.push({ description, amount, type });
+            updateUI();
+            this.reset();
+        });
+        function deleteTransaction(index) {
+            transactions.splice(index, 1);
+            updateUI();
+        }
+        function renderChart(income, expenses) {
+            const ctx = document.getElementById('reportChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Income', 'Expenses'],
+                    datasets: [{
+                        data: [income, expenses],
+                        backgroundColor: ['#4CAF50', '#F44336']
+                    }]
+                }
+            });
+        }
+        updateUI();
+    </script>
+</body>
+</html>
