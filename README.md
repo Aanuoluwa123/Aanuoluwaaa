@@ -1,100 +1,133 @@
 # Finance Tracker
 
-A simple yet powerful financial management application that helps you track your income and expenses, create budget categories, and visualize your financial data.
+A comprehensive finance management application that helps users track their income, expenses, and budget across different categories.
 
 ## Features
 
-- User authentication with Supabase
-- Income and expense tracking
-- Budget categories with spending limits
-- Financial reports and visualizations
-- Responsive design for mobile and desktop
+- **User Authentication**: Secure login and registration
+- **Transaction Management**: Add, view, and delete income and expense transactions
+- **Budget Categories**: Create custom categories with budget limits
+- **Financial Reports**: Visualize your financial data with charts and summaries
+- **Responsive Design**: Works on desktop and mobile devices
 
-## Tech Stack
+## Technology Stack
 
-- React with TypeScript
-- Tailwind CSS for styling
-- Chart.js for data visualization
-- Supabase for backend and database
+- **Frontend**: React, TypeScript, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL, Authentication, Storage)
+- **Visualization**: Chart.js
+- **Deployment**: Vercel
 
-## Setup Instructions
+## Development Setup
 
 ### Prerequisites
 
-- Node.js (v14 or later)
+- Node.js (v14 or higher)
 - npm or yarn
-- Supabase account
+- Supabase account (for database and authentication)
 
-### Supabase Setup
+### Installation
 
-1. Create a new Supabase project at [https://app.supabase.com](https://app.supabase.com)
-2. In your Supabase project, go to SQL Editor and run the migration scripts from the `supabase/migrations` folder
-3. Enable Email Auth in Authentication settings
-4. Get your Supabase URL and anon key from the API settings
-
-### Local Development
-
-1. Clone the repository
-   ```
-   git clone <repository-url>
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/finance-tracker.git
    cd finance-tracker
    ```
 
-2. Install dependencies
-   ```
+2. Install dependencies:
+   ```bash
    npm install
    # or
    yarn install
    ```
 
-3. Create a `.env` file in the root directory with your Supabase credentials
+3. Create a `.env` file in the project root with your Supabase credentials:
    ```
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VITE_SUPABASE_URL=your_supabase_url_here
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    ```
 
-4. Start the development server
-   ```
+4. Start the development server:
+   ```bash
    npm run dev
    # or
    yarn dev
    ```
 
-5. Open [http://localhost:5173](http://localhost:5173) in your browser
+5. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## Deployment
+## Development Mode
 
-### Vercel Deployment
+The application includes a development mode that works without Supabase credentials:
 
-1. Fork or clone this repository to your GitHub account
-2. Sign up for [Vercel](https://vercel.com) if you haven't already
-3. Create a new project in Vercel and import your GitHub repository
-4. Add the following environment variables in the Vercel project settings:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-5. Deploy the project
+- When running on localhost, you can use the "Development Mode Login" button
+- Sample data is provided for demonstration purposes
+- Changes are saved to localStorage and persist between page refreshes
 
-### Netlify Deployment
+## Database Setup
 
-1. Fork or clone this repository to your GitHub account
-2. Sign up for [Netlify](https://netlify.com) if you haven't already
-3. Create a new site in Netlify and import your GitHub repository
-4. Add the following environment variables in the Netlify site settings:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-5. Deploy the site
+The application requires the following tables in your Supabase database:
 
-## Usage
+### Categories Table
+```sql
+CREATE TABLE categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  type text NOT NULL CHECK (type IN ('income', 'expense')),
+  budget_limit numeric NULL,
+  user_id uuid REFERENCES auth.users(id) NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
 
-1. Sign up for an account
-2. Create budget categories for your income and expenses
-3. Add transactions and assign them to categories
-4. View your financial reports and track your spending against budget limits
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 
-## Contributing
+-- Add RLS policies for user access
+```
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Transactions Table
+```sql
+CREATE TABLE transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  description text NOT NULL,
+  amount numeric NOT NULL,
+  type text NOT NULL CHECK (type IN ('income', 'expense')),
+  created_at timestamptz DEFAULT now(),
+  user_id uuid REFERENCES auth.users(id) NOT NULL,
+  category_id uuid REFERENCES categories(id) NULL
+);
+
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+
+-- Add RLS policies for user access
+```
+
+## Production Deployment
+
+### Deploying to Vercel
+
+1. Create a production environment file:
+   ```bash
+   cp .env .env.production
+   ```
+
+2. Update `.env.production` with your production Supabase credentials.
+
+3. Deploy to Vercel:
+   ```bash
+   vercel
+   ```
+
+### Environment Variables
+
+Set the following environment variables in your deployment platform:
+
+- `VITE_SUPABASE_URL`: Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
+- `VITE_APP_MODE`: Set to `production`
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+[MIT](LICENSE)
+
+## Acknowledgments
+
+- Developed by ASHIYANBI AANUOLUWA HIKMAT 

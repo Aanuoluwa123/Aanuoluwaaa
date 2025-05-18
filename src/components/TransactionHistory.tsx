@@ -1,304 +1,238 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { dataService } from '../lib/dataService';
+import { Transaction } from '../lib/localStorage';
+import { eventBus, EVENTS } from '../lib/eventBus';
 import { toast } from 'react-hot-toast';
-
-interface Transaction {
-  id: string;
-  description: string;
-  amount: number;
-  type: 'income' | 'expense';
-  created_at: string;
-  category?: {
-    name: string;
-  };
-}
 
 interface TransactionHistoryProps {
   userId: string;
   onTransactionDeleted?: () => void;
 }
 
-// Sample transactions for development mode
-const sampleTransactions: Transaction[] = [
-  {
-    id: '1',
-    description: 'Salary',
-    amount: 3000,
-    type: 'income',
-    created_at: new Date().toISOString(),
-    category: { name: 'Salary' }
-  },
-  {
-    id: '2',
-    description: 'Rent',
-    amount: 1200,
-    type: 'expense',
-    created_at: new Date().toISOString(),
-    category: { name: 'Housing' }
-  },
-  {
-    id: '3',
-    description: 'Groceries',
-    amount: 250,
-    type: 'expense',
-    created_at: new Date().toISOString(),
-    category: { name: 'Food' }
-  },
-  {
-    id: '4',
-    description: 'Freelance Work',
-    amount: 500,
-    type: 'income',
-    created_at: new Date().toISOString(),
-    category: { name: 'Side Hustle' }
-  },
-  {
-    id: '5',
-    description: 'Internet Bill',
-    amount: 60,
-    type: 'expense',
-    created_at: new Date().toISOString(),
-    category: { name: 'Utilities' }
-  }
-];
-
 export default function TransactionHistory({ userId, onTransactionDeleted }: TransactionHistoryProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isDevelopment, setIsDevelopment] = useState(false);
 
+  // Fetch transactions on component mount
   useEffect(() => {
-    const isDevEnvironment = window.location.hostname === 'localhost' || 
-                             window.location.hostname === '127.0.0.1';
-    setIsDevelopment(isDevEnvironment);
+    fetchTransactions();
 
-    if (userId) {
-      fetchTransactions();
-    }
-  }, [userId, filter, sortBy, sortOrder]);
+    // Subscribe to transaction events
+    const createUnsubscribe = eventBus.on(EVENTS.TRANSACTION_CREATED, handleTransactionCreated);
+    const deleteUnsubscribe = eventBus.on(EVENTS.TRANSACTION_DELETED, handleTransactionDeleted);
+    
+    return () => {
+      createUnsubscribe();
+      deleteUnsubscribe();
+    };
+  }, [userId]);
 
-  async function fetchTransactions() {
+  const fetchTransactions = async () => {
     setLoading(true);
     try {
-      if (isDevelopment && userId === 'dev-user-id') {
-        // Filter and sort sample transactions for development mode
-        let filteredTransactions = [...sampleTransactions];
-        
-        if (filter !== 'all') {
-          filteredTransactions = filteredTransactions.filter(t => t.type === filter);
-        }
-        
-        // Sort transactions
-        filteredTransactions.sort((a, b) => {
-          if (sortBy === 'date') {
-            return sortOrder === 'asc' 
-              ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-              : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          } else {
-            return sortOrder === 'asc' 
-              ? a.amount - b.amount
-              : b.amount - a.amount;
-          }
-        });
-        
-        setTransactions(filteredTransactions);
-        setLoading(false);
-        return;
-      }
-
-      let query = supabase
-        .from('transactions')
-        .select('*, category:categories(name)')
-        .eq('user_id', userId);
-      
-      if (filter !== 'all') {
-        query = query.eq('type', filter);
-      }
-      
-      if (sortBy === 'date') {
-        query = query.order('created_at', { ascending: sortOrder === 'asc' });
-      } else if (sortBy === 'amount') {
-        query = query.order('amount', { ascending: sortOrder === 'asc' });
-      }
-      
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setTransactions(data || []);
-    } catch (error: any) {
-      toast.error('Error loading transactions: ' + error.message);
-      
-      if (isDevelopment) {
-        // Use sample data in development mode
-        setTransactions(sampleTransactions);
-      }
+      const data = await dataService.getTransactions(userId);
+      setTransactions(data);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      toast.error('Failed to load transactions');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function deleteTransaction(id: string) {
-    try {
-      if (isDevelopment && userId === 'dev-user-id') {
-        // Simulate deleting a transaction in development mode
-        setTransactions(transactions.filter(t => t.id !== id));
-        toast.success('Transaction deleted');
+  const handleTransactionCreated = (transaction: Transaction) => {
+    setTransactions(prev => [transaction, ...prev]);
+  };
+
+  const handleTransactionDeleted = (transactionId: string) => {
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+  };
+
+  const handleDelete = async (transactionId: string) => {
+    if (window.confirm('Are you sure you want to delete this transaction?')) {
+      try {
+        await dataService.deleteTransaction(transactionId);
+        toast.success('Transaction deleted successfully');
         
         if (onTransactionDeleted) {
           onTransactionDeleted();
         }
-        return;
+      } catch (error) {
+        console.error('Error deleting transaction:', error);
+        toast.error('Failed to delete transaction');
       }
-
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      
-      setTransactions(transactions.filter(t => t.id !== id));
-      toast.success('Transaction deleted');
-      
-      if (onTransactionDeleted) {
-        onTransactionDeleted();
-      }
-    } catch (error: any) {
-      toast.error('Error deleting transaction: ' + error.message);
     }
-  }
+  };
 
-  // Filter transactions based on search term
-  const filteredTransactions = transactions.filter(transaction => 
-    transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (transaction.category?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter and search transactions
+  const filteredTransactions = transactions.filter(transaction => {
+    const matchesFilter = filter === 'all' || transaction.type === filter;
+    const matchesSearch = searchTerm === '' || 
+      transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesFilter && matchesSearch;
+  });
 
   // Format date for display
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
   return (
-    <div className="bg-white p-6 rounded shadow">
-      <h2 className="text-2xl font-bold mb-4">Transaction History</h2>
-      
-      {isDevelopment && userId === 'dev-user-id' && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-          <p className="font-medium">Development Mode</p>
-          <p>Using sample transaction data</p>
-        </div>
-      )}
-      
-      <div className="mb-4 space-y-2">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div className="flex space-x-2">
-            <button 
-              onClick={() => setFilter('all')} 
-              className={`px-3 py-1 rounded ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            >
-              All
-            </button>
-            <button 
-              onClick={() => setFilter('income')} 
-              className={`px-3 py-1 rounded ${filter === 'income' ? 'bg-green-500 text-white' : 'bg-gray-200'}`}
-            >
-              Income
-            </button>
-            <button 
-              onClick={() => setFilter('expense')} 
-              className={`px-3 py-1 rounded ${filter === 'expense' ? 'bg-red-500 text-white' : 'bg-gray-200'}`}
-            >
-              Expenses
-            </button>
-          </div>
-          
-          <div className="flex space-x-2">
-            <select 
-              value={`${sortBy}-${sortOrder}`}
-              onChange={(e) => {
-                const [newSortBy, newSortOrder] = e.target.value.split('-') as ['date' | 'amount', 'asc' | 'desc'];
-                setSortBy(newSortBy);
-                setSortOrder(newSortOrder);
-              }}
-              className="px-3 py-1 border rounded"
-            >
-              <option value="date-desc">Newest First</option>
-              <option value="date-asc">Oldest First</option>
-              <option value="amount-desc">Highest Amount</option>
-              <option value="amount-asc">Lowest Amount</option>
-            </select>
-          </div>
+    <div className="space-y-4">
+      {/* Filter and Search */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center space-y-3 md:space-y-0">
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+              filter === 'all'
+                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('income')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+              filter === 'income'
+                ? 'bg-green-100 text-green-700 border border-green-200'
+                : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+            }`}
+          >
+            Income
+          </button>
+          <button
+            onClick={() => setFilter('expense')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+              filter === 'expense'
+                ? 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+            }`}
+          >
+            Expenses
+          </button>
         </div>
         
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search transactions..."
-          className="w-full p-2 border rounded"
-        />
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            placeholder="Search transactions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
       </div>
-      
+
+      {/* Transactions List */}
       {loading ? (
-        <div className="text-center py-4">Loading transactions...</div>
+        <div className="flex justify-center py-8">
+          <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : filteredTransactions.length === 0 ? (
+        <div className="text-center py-8">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400 mx-auto mb-3" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 110-12 6 6 0 010 12zm-1-5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm0-4a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
+          </svg>
+          <p className="text-gray-500 text-lg">
+            {searchTerm 
+              ? 'No transactions match your search' 
+              : filter !== 'all' 
+                ? `No ${filter} transactions found` 
+                : 'No transactions yet'}
+          </p>
+          <p className="text-gray-400 text-sm mt-1">
+            {searchTerm 
+              ? 'Try a different search term' 
+              : 'Add a transaction to get started'}
+          </p>
+        </div>
       ) : (
-        <>
-          {filteredTransactions.length === 0 ? (
-            <div className="text-center py-4 text-gray-500">
-              {searchTerm ? 'No transactions match your search' : 'No transactions found'}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-2">Date</th>
-                    <th className="p-2">Description</th>
-                    <th className="p-2">Category</th>
-                    <th className="p-2">Amount</th>
-                    <th className="p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTransactions.map((transaction) => (
-                    <tr 
-                      key={transaction.id} 
-                      className="border-b hover:bg-gray-50"
-                    >
-                      <td className="p-2">{formatDate(transaction.created_at)}</td>
-                      <td className="p-2">{transaction.description}</td>
-                      <td className="p-2">{transaction.category?.name || 'Uncategorized'}</td>
-                      <td className={`p-2 font-medium ${
-                        transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Description
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Amount
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredTransactions.map((transaction) => (
+                <tr key={transaction.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${
+                        transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
                       }`}>
-                        {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toFixed(2)}
-                      </td>
-                      <td className="p-2">
-                        <button
-                          onClick={() => deleteTransaction(transaction.id)}
-                          className="text-red-500 hover:text-red-700"
-                          aria-label="Delete transaction"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+                        {transaction.type === 'income' ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {transaction.description}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className={`text-sm font-medium ${
+                      transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {transaction.type === 'income' ? '+' : '-'} ${transaction.amount.toFixed(2)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatDate(transaction.created_at)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="text-red-600 hover:text-red-900 focus:outline-none"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
