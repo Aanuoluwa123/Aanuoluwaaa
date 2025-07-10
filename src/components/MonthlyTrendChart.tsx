@@ -3,12 +3,14 @@ import { Chart, LineElement, PointElement, CategoryScale, LinearScale, Title, To
 import { Line } from 'react-chartjs-2';
 import { dataService } from '../lib/dataService';
 import { Transaction } from '../lib/localStorage';
+import { formatCurrency } from '../utils';
 
 // Register required Chart.js components
 Chart.register(LineElement, PointElement, CategoryScale, LinearScale, Title, Tooltip, Legend);
 
 interface MonthlyTrendChartProps {
   userId: string;
+  selectedCurrency: string;
 }
 
 interface MonthlyData {
@@ -17,13 +19,13 @@ interface MonthlyData {
   expenses: number;
 }
 
-export default function MonthlyTrendChart({ userId }: MonthlyTrendChartProps) {
+export default function MonthlyTrendChart({ userId, selectedCurrency }: MonthlyTrendChartProps) {
   const [loading, setLoading] = useState(true);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
 
   useEffect(() => {
     fetchTransactions();
-  }, [userId]);
+  }, [userId, selectedCurrency]);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -42,12 +44,12 @@ export default function MonthlyTrendChart({ userId }: MonthlyTrendChartProps) {
   };
 
   const processTransactionsByMonth = (transactions: Transaction[]): MonthlyData[] => {
-    // Group transactions by month
+    // Group transactions by month and currency
     const monthlyMap = new Map<string, { income: number; expenses: number }>();
     
     // Get current date and calculate last 6 months
     const today = new Date();
-    const months = [];
+    const months: { key: string; name: string }[] = [];
     for (let i = 5; i >= 0; i--) {
       const month = new Date(today.getFullYear(), today.getMonth() - i, 1);
       const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
@@ -59,20 +61,22 @@ export default function MonthlyTrendChart({ userId }: MonthlyTrendChartProps) {
     }
     
     // Aggregate transactions by month
-    transactions.forEach(transaction => {
-      const date = new Date(transaction.created_at);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      
-      if (monthlyMap.has(monthKey)) {
-        const monthData = monthlyMap.get(monthKey)!;
-        if (transaction.type === 'income') {
-          monthData.income += transaction.amount;
-        } else {
-          monthData.expenses += transaction.amount;
+    transactions
+      .filter(transaction => transaction.currency === selectedCurrency)
+      .forEach(transaction => {
+        const date = new Date(transaction.created_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        if (monthlyMap.has(monthKey)) {
+          const monthData = monthlyMap.get(monthKey)!;
+          if (transaction.type === 'income') {
+            monthData.income += transaction.amount;
+          } else {
+            monthData.expenses += transaction.amount;
+          }
+          monthlyMap.set(monthKey, monthData);
         }
-        monthlyMap.set(monthKey, monthData);
-      }
-    });
+      });
     
     // Convert map to array
     return months.map(month => ({
@@ -111,7 +115,7 @@ export default function MonthlyTrendChart({ userId }: MonthlyTrendChartProps) {
         beginAtZero: true,
         ticks: {
           callback: function(value: any) {
-            return '$' + value;
+            return formatCurrency(value, selectedCurrency);
           }
         }
       }
@@ -125,7 +129,7 @@ export default function MonthlyTrendChart({ userId }: MonthlyTrendChartProps) {
           label: function(context: any) {
             const label = context.dataset.label || '';
             const value = context.raw || 0;
-            return `${label}: $${value.toFixed(2)}`;
+            return `${label}: ${formatCurrency(value, selectedCurrency)}`;
           }
         }
       }

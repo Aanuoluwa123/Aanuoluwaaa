@@ -1,4 +1,4 @@
-# Finance Tracker
+# Fintr
 
 A comprehensive finance management application that helps users track their income, expenses, and budget across different categories.
 

@@ -152,14 +152,16 @@ class DataService {
                 if (result.error) throw result.error;
 
                 // Emit event for other components
-                eventBus.emit(EVENTS.TRANSACTION_CREATED, result.data);
+                const eventName = transaction.id ? EVENTS.TRANSACTION_UPDATED : EVENTS.TRANSACTION_CREATED;
+                eventBus.emit(eventName, result.data);
 
                 return result.data as Transaction;
             } else {
                 const savedTransaction = localStorageService.saveTransaction(transaction);
 
                 // Emit event for other components
-                eventBus.emit(EVENTS.TRANSACTION_CREATED, savedTransaction);
+                const eventName = transaction.id ? EVENTS.TRANSACTION_UPDATED : EVENTS.TRANSACTION_CREATED;
+                eventBus.emit(eventName, savedTransaction);
 
                 return savedTransaction;
             }
@@ -203,14 +205,24 @@ class DataService {
                 const transactions = await this.getTransactions(userId);
                 const categories = await this.getCategories(userId);
 
-                // Calculate totals
-                const totalIncome = transactions
-                    .filter(t => t.type === 'income')
-                    .reduce((sum, t) => sum + t.amount, 0);
+                // Aggregate totals by currency
+                const currencyTotals: Record<string, { income: number; expenses: number }> = {};
+                transactions.forEach(t => {
+                    if (!currencyTotals[t.currency]) {
+                        currencyTotals[t.currency] = { income: 0, expenses: 0 };
+                    }
+                    if (t.type === 'income') {
+                        currencyTotals[t.currency].income += t.amount;
+                    } else {
+                        currencyTotals[t.currency].expenses += t.amount;
+                    }
+                });
 
-                const totalExpenses = transactions
-                    .filter(t => t.type === 'expense')
-                    .reduce((sum, t) => sum + t.amount, 0);
+                // Calculate total balance by currency
+                const balancesByCurrency = Object.entries(currencyTotals).reduce((acc, [currency, totals]) => {
+                    acc[currency] = totals.income - totals.expenses;
+                    return acc;
+                }, {} as Record<string, number>);
 
                 // Get category spending - include both income and expense categories
                 const categorySpending = categories.map(category => {
@@ -229,9 +241,8 @@ class DataService {
                 });
 
                 return {
-                    totalIncome,
-                    totalExpenses,
-                    balance: totalIncome - totalExpenses,
+                    currencyTotals,
+                    balance: Object.values(balancesByCurrency).reduce((sum, balance) => sum + balance, 0),
                     categorySpending,
                     recentTransactions: transactions.slice(0, 5)
                 };
@@ -242,8 +253,7 @@ class DataService {
             console.error('Error fetching dashboard data:', error.message);
             toast.error(`Failed to fetch dashboard data: ${error.message}`);
             return {
-                totalIncome: 0,
-                totalExpenses: 0,
+                currencyTotals: {},
                 balance: 0,
                 categorySpending: [],
                 recentTransactions: []
@@ -252,4 +262,4 @@ class DataService {
     }
 }
 
-export const dataService = new DataService(); 
+export const dataService = new DataService();

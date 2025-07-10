@@ -67,6 +67,7 @@ export const EVENTS = {
     CATEGORY_CREATED: 'category:created',
     CATEGORY_DELETED: 'category:deleted',
     TRANSACTION_CREATED: 'transaction:created',
+    TRANSACTION_UPDATED: 'transaction:updated',
     TRANSACTION_DELETED: 'transaction:deleted',
     DATA_REFRESH_NEEDED: 'data:refresh',
 }; 

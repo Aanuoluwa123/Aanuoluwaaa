@@ -17,9 +17,29 @@ export interface Transaction {
     description: string;
     amount: number;
     type: 'income' | 'expense';
+    currency: string;
     created_at: string;
     user_id: string;
     category_id?: string;
+}
+
+export interface CurrencyTotals {
+    income: number;
+    expenses: number;
+}
+
+export interface DashboardData {
+    currencyTotals: Record<string, CurrencyTotals>;
+    balance: number;
+    categorySpending: {
+        id: string;
+        name: string;
+        spent: number;
+        budget: number;
+        percentage: number;
+        type: 'income' | 'expense';
+    }[];
+    recentTransactions: Transaction[];
 }
 
 /**
@@ -186,43 +206,56 @@ class LocalStorageService {
     }
 
     // Get summary data for dashboard
-    getDashboardData(userId: string) {
-        const transactions = this.getTransactions(userId);
-        const categories = this.getCategories(userId);
+    getDashboardData(userId: string): DashboardData {
+        try {
+            const transactions = this.getTransactions(userId);
+            const categories = this.getCategories(userId);
 
-        // Calculate totals
-        const totalIncome = transactions
-            .filter(t => t.type === 'income')
-            .reduce((sum, t) => sum + t.amount, 0);
+            // Aggregate totals by currency
+            const currencyTotals: Record<string, { income: number; expenses: number }> = {};
+            transactions.forEach(t => {
+                if (!currencyTotals[t.currency]) {
+                    currencyTotals[t.currency] = { income: 0, expenses: 0 };
+                }
+                if (t.type === 'income') {
+                    currencyTotals[t.currency].income += t.amount;
+                } else {
+                    currencyTotals[t.currency].expenses += t.amount;
+                }
+            });
 
-        const totalExpenses = transactions
-            .filter(t => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0);
+            // Get category spending - include both income and expense categories
+            const categorySpending = categories.map(category => {
+                const categoryTransactions = transactions.filter(t => t.category_id === category.id);
+                const spent = categoryTransactions.reduce((sum, t) => sum + t.amount, 0);
+                const budget = category.budget_limit || 0;
 
-        // Get category spending - include both income and expense categories
-        const categorySpending = categories.map(category => {
-            const transactions = this.getTransactionsByCategory(userId, category.id);
-            const spent = transactions.reduce((sum, t) => sum + t.amount, 0);
-            const budget = category.budget_limit || 0;
+                return {
+                    id: category.id,
+                    name: category.name,
+                    spent,
+                    budget,
+                    percentage: budget > 0 ? (spent / budget) * 100 : 0,
+                    type: category.type
+                };
+            });
 
             return {
-                id: category.id,
-                name: category.name,
-                spent,
-                budget,
-                percentage: budget > 0 ? (spent / budget) * 100 : 0,
-                type: category.type
+                currencyTotals,
+                balance: Object.values(currencyTotals).reduce((sum, totals) => sum + (totals.income - totals.expenses), 0),
+                categorySpending,
+                recentTransactions: transactions.slice(0, 5)
             };
-        });
-
-        return {
-            totalIncome,
-            totalExpenses,
-            balance: totalIncome - totalExpenses,
-            categorySpending,
-            recentTransactions: transactions.slice(0, 5)
-        };
+        } catch (error) {
+            console.error('Error getting dashboard data:', error);
+            return {
+                currencyTotals: {},
+                balance: 0,
+                categorySpending: [],
+                recentTransactions: []
+            };
+        }
     }
 }
 
-export const localStorageService = new LocalStorageService(); 
+export const localStorageService = new LocalStorageService();

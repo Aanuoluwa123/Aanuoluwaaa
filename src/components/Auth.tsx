@@ -104,7 +104,7 @@ export default function Auth({ onAuthChange }: AuthProps) {
               <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
             </svg>
           </div>
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">FinanceTracker</h1>
+          <h1 className="mt-2 text-3xl font-bold text-gray-900">Fintr</h1>
           <p className="mt-1 text-sm text-gray-600">Manage your finances with ease</p>
         </div>
         

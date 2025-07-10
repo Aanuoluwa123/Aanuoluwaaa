@@ -1,30 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../lib/dataService';
 import { Transaction } from '../lib/localStorage';
+import { formatCurrency } from '../utils';
 import { eventBus, EVENTS } from '../lib/eventBus';
 import { toast } from 'react-hot-toast';
+import TransactionForm from './TransactionForm';
 
 interface TransactionHistoryProps {
   userId: string;
   onTransactionDeleted?: () => void;
+  onTransactionUpdated?: () => void;
 }
 
-export default function TransactionHistory({ userId, onTransactionDeleted }: TransactionHistoryProps) {
+export default function TransactionHistory({ userId, onTransactionDeleted, onTransactionUpdated }: TransactionHistoryProps) {
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Fetch transactions on component mount
+  // Fetch transactions on component mount and subscribe to events
   useEffect(() => {
     fetchTransactions();
 
     // Subscribe to transaction events
     const createUnsubscribe = eventBus.on(EVENTS.TRANSACTION_CREATED, handleTransactionCreated);
+    const updateUnsubscribe = eventBus.on(EVENTS.TRANSACTION_UPDATED, handleTransactionUpdated);
     const deleteUnsubscribe = eventBus.on(EVENTS.TRANSACTION_DELETED, handleTransactionDeleted);
     
     return () => {
       createUnsubscribe();
+      updateUnsubscribe();
       deleteUnsubscribe();
     };
   }, [userId]);
@@ -46,8 +53,31 @@ export default function TransactionHistory({ userId, onTransactionDeleted }: Tra
     setTransactions(prev => [transaction, ...prev]);
   };
 
+  const handleTransactionUpdated = (updatedTransaction: Transaction) => {
+    setTransactions(prev => 
+      prev.map(t => t.id === updatedTransaction.id ? updatedTransaction : t)
+    );
+    if (onTransactionUpdated) onTransactionUpdated();
+  };
+
   const handleTransactionDeleted = (transactionId: string) => {
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
+  };
+
+  const handleEditClick = (transaction: Transaction) => {
+    setTransactionToEdit(transaction);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditModalOpen(false);
+    setTransactionToEdit(null);
+  };
+
+  const handleEditSuccess = () => {
+    setIsEditModalOpen(false);
+    setTransactionToEdit(null);
+    if (onTransactionUpdated) onTransactionUpdated();
   };
 
   const handleDelete = async (transactionId: string) => {
@@ -86,6 +116,9 @@ export default function TransactionHistory({ userId, onTransactionDeleted }: Tra
       minute: '2-digit'
     });
   };
+
+  // Format currency for display
+  const formatTransactionAmount = (amount: number, currency: string) => formatCurrency(amount, currency);
 
   return (
     <div className="space-y-4">
@@ -141,6 +174,23 @@ export default function TransactionHistory({ userId, onTransactionDeleted }: Tra
       </div>
 
       {/* Transactions List */}
+      {/* Edit Transaction Modal */}
+      {isEditModalOpen && transactionToEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Edit Transaction</h2>
+              <TransactionForm 
+                userId={userId}
+                transactionToEdit={transactionToEdit}
+                onTransactionUpdated={handleEditSuccess}
+                onCancel={handleEditCancel}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-8">
           <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -187,7 +237,11 @@ export default function TransactionHistory({ userId, onTransactionDeleted }: Tra
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredTransactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
+                <tr 
+                  key={transaction.id} 
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleEditClick(transaction)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${
@@ -204,29 +258,42 @@ export default function TransactionHistory({ userId, onTransactionDeleted }: Tra
                         )}
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {transaction.description}
-                        </div>
+                        <p className="text-sm text-gray-500">{transaction.description}</p>
+                        <p className="text-sm text-gray-400">{formatDate(transaction.created_at)}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className={`text-sm font-medium ${
-                      transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {transaction.type === 'income' ? '+' : '-'} ${transaction.amount.toFixed(2)}
+                    <div className="text-sm font-medium">
+                      <span className={`text-${transaction.type === 'income' ? 'green-600' : 'red-600'}`}>
+                        {formatTransactionAmount(transaction.amount, transaction.currency)}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(transaction.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleDelete(transaction.id)}
-                      className="text-red-600 hover:text-red-900 focus:outline-none"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex space-x-4 justify-end">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditClick(transaction);
+                        }}
+                        className="text-blue-600 hover:text-blue-900 focus:outline-none"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(transaction.id);
+                        }}
+                        className="text-red-600 hover:text-red-900 focus:outline-none"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
